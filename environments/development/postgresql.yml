@@ -1,7 +1,7 @@
 SEPARATE_SYNCLOGS_DB: False
 SEPARATE_FORM_PROCESSING_DBS: False
 
-override:
+postgres_override:
   postgresql_effective_cache_size: 4GB
   postgresql_log_directory: '{{ encrypted_root }}/pg_log'
   postgresql_max_stack_depth: 6MB
@@ -14,6 +14,8 @@ dbs:
     pgpool_host: db1
   synclogs: null
   form_processing: null
+  ucr:
+    host: citusdb1
 
 # A config should be specified for each host in `pgpool` host group
 pgpool_config:

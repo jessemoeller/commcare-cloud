@@ -43,6 +43,41 @@ locals {
   }
 }
 
+
+data "aws_iam_role" "data_lifecycle_role" {
+  name = "AWSDataLifecycleManagerDefaultRole"
+}
+
+resource "aws_dlm_lifecycle_policy" "data_volume_backups" {
+  description        = "Data Volume Backup Policy"
+  execution_role_arn = "${data.aws_iam_role.data_lifecycle_role.arn}"
+  state              = "ENABLED"
+
+  policy_details {
+    resource_types = ["VOLUME"]
+
+    schedule {
+      name = "Default Schedule"
+
+      create_rule {
+        interval      = 24
+        interval_unit = "HOURS"
+        times         = ["22:00"]
+      }
+
+      retain_rule {
+        count = 7
+      }
+
+      copy_tags = true
+    }
+
+    target_tags = {
+      GroupDetail = "couchdb2:data"
+    }
+  }
+}
+
 {% for server in servers + proxy_servers %}
 module "server__{{ server.server_name }}" {
   source = "./modules/server"
@@ -55,8 +90,14 @@ module "server__{{ server.server_name }}" {
   secondary_volume_size = {{ server.block_device.volume_size|default(0)|tojson }}
   secondary_volume_type = {{ server.block_device.volume_type|default("")|tojson }}
 
+{# Remove the :bionic in group option once this has been rolled out -#}
+{# and any open PRs have had a chance to adopt the new convention -#}
+{% if server.os == 'bionic' or ':bionic' in server.group %}
+  server_image = "${var.bionic_server_image}"
+{% else %}
   server_image = "${var.server_image}"
-  environment = "${var.environment}"
+{% endif %}
+ environment = "${var.environment}"
   vpc_id = "${module.network.vpc-id}"
   subnet_options = "${local.subnet_options}"
   security_group_options = "${local.security_group_options}"
@@ -73,20 +114,21 @@ resource "aws_eip" "proxy__{{ server.server_name }}" {
 }
 {% endfor %}
 
-
+{% if elasticache %}
 module "Redis" {
   source               = "./modules/elasticache"
-  create               = "{{ redis.create|tojson }}"
-  cluster_id           = "redis-${var.environment}"
-  engine               = "redis"
-  engine_version       = "{{ redis.engine_version }}"
-  node_type            = "{{ redis.node_type }}"
-  num_cache_nodes      = "{{ redis.num_cache_nodes }}"
-  parameter_group_name = "{{ redis.parameter_group_name }}"
+  create               = "{{ elasticache.create|tojson }}"
+  cluster_id           = "elasticache-${var.environment}"
+  engine               = "elasticache"
+  engine_version       = "{{ elasticache.engine_version }}"
+  node_type            = "{{ elasticache.node_type }}"
+  num_cache_nodes      = "{{ elasticache.num_cache_nodes }}"
+  parameter_group_name = "{{ elasticache.parameter_group_name }}"
   port                 = 6379
   elasticache_subnets  = "${values(module.network.subnets-db-private)}"
   security_group_ids   = ["${module.network.elasticache-sg}", "${module.network.vpn-connections-sg}"]
 }
+{% endif %}
 
 module "openvpn" {
   source = "./modules/openvpn"

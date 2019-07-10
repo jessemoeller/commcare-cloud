@@ -71,7 +71,12 @@ class Terraform(CommandBase):
             return -1
 
         if not args.skip_secrets and unknown_args and unknown_args[0] in ('plan', 'apply'):
-            rds_password = environment.get_vault_variables()['secrets']['POSTGRES_USERS']['root']['password']
+            rds_password = (
+                environment.get_vault_variables()['secrets']['POSTGRES_USERS']['root']['password']
+                if environment.terraform_config.rds_instances
+                else ''
+            )
+
             with open(os.path.join(run_dir, 'secrets.auto.tfvars'), 'w') as f:
                 print('rds_password = {}'.format(json.dumps(rds_password)), file=f)
 
@@ -111,8 +116,8 @@ def get_postgresql_params_by_rds_instance(environment):
 
     See aws db_parameter_group "parameter" argument.
     """
-    postgresql_variables = get_role_defaults('postgresql')
-    postgresql_variables.update(environment.postgresql_config.override)
+    postgresql_variables = get_role_defaults('postgresql_base')
+    postgresql_variables.update(environment.postgresql_config.postgres_override)
     environment_default_params = {
         'max_connections': postgresql_variables['postgresql_max_connections'],
     }

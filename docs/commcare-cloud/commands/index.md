@@ -11,7 +11,7 @@ All `commcare-cloud` commands take the following form:
 ```
 commcare-cloud [--control]
                <env>
-               {bootstrap-users,ansible-playbook,django-manage,aps,aws-sign-in,tmux,ap,validate-environment-settings,openvpn-activate-user,deploy-stack,service,update-supervisor-confs,update-users,ping,migrate_couchdb,lookup,run-module,update-config,copy-files,mosh,list-postgresql-dbs,after-reboot,ssh,downtime,fab,update-local-known-hosts,aws-list,aws-fill-inventory,migrate-couchdb,terraform,openvpn-claim-user,run-shell-command,terraform-migrate-state}
+               {bootstrap-users,ansible-playbook,django-manage,aps,aws-sign-in,tmux,ap,validate-environment-settings,openvpn-activate-user,deploy-stack,service,update-supervisor-confs,update-users,ping,migrate_couchdb,lookup,run-module,update-config,copy-files,mosh,list-postgresql-dbs,after-reboot,ssh,downtime,fab,update-local-known-hosts,send-datadog-event,aws-list,aws-fill-inventory,migrate-couchdb,terraform,openvpn-claim-user,run-shell-command,terraform-migrate-state}
                ...
 ```
 
@@ -230,7 +230,7 @@ Run an arbitrary Ansible module.
 commcare-cloud <env> run-module [--use-factory-auth] inventory_group module module_args
 ```
 
-#### Example
+##### Example
 
 To print out the `inventory_hostname` ansible variable for each machine, run
 ```
@@ -283,12 +283,13 @@ authenticate using the pem file (or prompt for root password if there is no pem 
   --list-hosts          outputs a list of matching hosts; does not execute
                         anything else
   -M MODULE_PATH, --module-path=MODULE_PATH
-                        prepend colon-separated path(s) to module library
-                        (default=[u'./src/commcare_cloud/ansible/library'])
+                        prepend colon-separated path(s) to module library (def
+                        ault=~/.ansible/plugins/modules:/usr/share/ansible/plu
+                        gins/modules)
   -o, --one-line        condense output
   --playbook-dir=BASEDIR
                         Since this tool does not use playbooks, use this as a
-                        subsitute playbook directory.This sets the relative
+                        substitute playbook directory.This sets the relative
                         path for many features including roles/ group_vars/
                         etc.
   -P POLL_INTERVAL, --poll=POLL_INTERVAL
@@ -299,7 +300,20 @@ authenticate using the pem file (or prompt for root password if there is no pem 
   --vault-id=VAULT_IDS  the vault identity to use
   -v, --verbose         verbose mode (-vvv for more, -vvvv to enable
                         connection debugging)
-  --version             show program's version number and exit
+  --version             show program's version number, config file location,
+                        configured module search path, module location,
+                        executable location and exit
+
+```
+#####   Privilege Escalation Options
+```
+    control how and which user you become as on target hosts
+
+    --become-method=BECOME_METHOD
+                        privilege escalation method to use (default=sudo), use
+                        `ansible-doc -t become -l` to list valid choices.
+    -K, --ask-become-pass
+                        ask for privilege escalation password
 
 ```
 #####   Connection Options
@@ -326,18 +340,6 @@ authenticate using the pem file (or prompt for root password if there is no pem 
                         specify extra arguments to pass to scp only (e.g. -l)
     --ssh-extra-args=SSH_EXTRA_ARGS
                         specify extra arguments to pass to ssh only (e.g. -R)
-
-```
-#####   Privilege Escalation Options
-```
-    control how and which user you become as on target hosts
-
-    --become-method=BECOME_METHOD
-                        privilege escalation method to use (default=sudo),
-                        valid choices: [ sudo | su | pbrun | pfexec | doas |
-                        dzdo | ksu | runas | pmrun | enable ]
-    -K, --ask-become-pass
-                        ask for privilege escalation password
 ```
 
 ---
@@ -350,7 +352,7 @@ Run an arbitrary command via the Ansible shell module.
 commcare-cloud <env> run-shell-command [--silence-warnings] [--use-factory-auth] inventory_group shell_command
 ```
 
-#### Example
+##### Example
 
 ```
 commcare-cloud <env> run-shell-command all 'df -h | grep /opt/data'
@@ -402,12 +404,13 @@ authenticate using the pem file (or prompt for root password if there is no pem 
   --list-hosts          outputs a list of matching hosts; does not execute
                         anything else
   -M MODULE_PATH, --module-path=MODULE_PATH
-                        prepend colon-separated path(s) to module library
-                        (default=[u'./src/commcare_cloud/ansible/library'])
+                        prepend colon-separated path(s) to module library (def
+                        ault=~/.ansible/plugins/modules:/usr/share/ansible/plu
+                        gins/modules)
   -o, --one-line        condense output
   --playbook-dir=BASEDIR
                         Since this tool does not use playbooks, use this as a
-                        subsitute playbook directory.This sets the relative
+                        substitute playbook directory.This sets the relative
                         path for many features including roles/ group_vars/
                         etc.
   -P POLL_INTERVAL, --poll=POLL_INTERVAL
@@ -418,7 +421,20 @@ authenticate using the pem file (or prompt for root password if there is no pem 
   --vault-id=VAULT_IDS  the vault identity to use
   -v, --verbose         verbose mode (-vvv for more, -vvvv to enable
                         connection debugging)
-  --version             show program's version number and exit
+  --version             show program's version number, config file location,
+                        configured module search path, module location,
+                        executable location and exit
+
+```
+#####   Privilege Escalation Options
+```
+    control how and which user you become as on target hosts
+
+    --become-method=BECOME_METHOD
+                        privilege escalation method to use (default=sudo), use
+                        `ansible-doc -t become -l` to list valid choices.
+    -K, --ask-become-pass
+                        ask for privilege escalation password
 
 ```
 #####   Connection Options
@@ -445,19 +461,27 @@ authenticate using the pem file (or prompt for root password if there is no pem 
                         specify extra arguments to pass to scp only (e.g. -l)
     --ssh-extra-args=SSH_EXTRA_ARGS
                         specify extra arguments to pass to ssh only (e.g. -R)
+```
+
+---
+
+#### `send-datadog-event`
+
+Track an infrastructure maintainance event in Datadog
 
 ```
-#####   Privilege Escalation Options
+commcare-cloud <env> send-datadog-event event_title event_text
 ```
-    control how and which user you become as on target hosts
 
-    --become-method=BECOME_METHOD
-                        privilege escalation method to use (default=sudo),
-                        valid choices: [ sudo | su | pbrun | pfexec | doas |
-                        dzdo | ksu | runas | pmrun | enable ]
-    -K, --ask-become-pass
-                        ask for privilege escalation password
-```
+##### Positional Arguments
+
+###### `event_title`
+
+Title of the datadog event.
+
+###### `event_text`
+
+Text content of the datadog event.
 
 ---
 
@@ -474,7 +498,7 @@ runs `./manage.py ...` on the first django_manage machine of &lt;env&gt; or
 server you specify.
 Omit &lt;command&gt; to see a full list of possible commands.
 
-#### Example
+##### Example
 
 To open a django shell in a tmux window using the `2018-04-13_18.16` release.
 
@@ -518,7 +542,7 @@ Connect to a remote host with ssh and open a tmux session.
 commcare-cloud <env> tmux server [remote_command]
 ```
 
-#### Example
+##### Example
 
 Rejoin last open tmux window.
 
@@ -584,7 +608,7 @@ commcare-cloud <env> ansible-playbook [--use-factory-auth] playbook
 
 By default, you will see --check output and then asked whether to apply.
 
-#### Example
+##### Example
 
 ```
 commcare-cloud <env> ansible-playbook deploy_proxy.yml --limit=proxy
@@ -620,8 +644,9 @@ authenticate using the pem file (or prompt for root password if there is no pem 
   --list-tags           list all available tags
   --list-tasks          list all tasks that would be executed
   -M MODULE_PATH, --module-path=MODULE_PATH
-                        prepend colon-separated path(s) to module library
-                        (default=[u'./src/commcare_cloud/ansible/library'])
+                        prepend colon-separated path(s) to module library (def
+                        ault=~/.ansible/plugins/modules:/usr/share/ansible/plu
+                        gins/modules)
   --skip-tags=SKIP_TAGS
                         only run plays and tasks whose tags do not match these
                         values
@@ -634,7 +659,9 @@ authenticate using the pem file (or prompt for root password if there is no pem 
   --vault-id=VAULT_IDS  the vault identity to use
   -v, --verbose         verbose mode (-vvv for more, -vvvv to enable
                         connection debugging)
-  --version             show program's version number and exit
+  --version             show program's version number, config file location,
+                        configured module search path, module location,
+                        executable location and exit
 
 ```
 #####   Connection Options
@@ -670,9 +697,8 @@ authenticate using the pem file (or prompt for root password if there is no pem 
     -b, --become        run operations with become (does not imply password
                         prompting)
     --become-method=BECOME_METHOD
-                        privilege escalation method to use (default=sudo),
-                        valid choices: [ sudo | su | pbrun | pfexec | doas |
-                        dzdo | ksu | runas | pmrun | enable ]
+                        privilege escalation method to use (default=sudo), use
+                        `ansible-doc -t become -l` to list valid choices.
     --become-user=BECOME_USER
                         run operations as this user (default=root)
     -K, --ask-become-pass
@@ -903,7 +929,7 @@ commcare-cloud <env> service [--only PROCESS_PATTERN]
                              {start,stop,restart,status,logs,help}
 ```
 
-#### Example
+##### Example
 
 ```
 cchq <env> service postgresql status
@@ -992,7 +1018,7 @@ then it's acceptable to do live.
 Manage downtime for the selected environment.
 
 ```
-commcare-cloud <env> downtime [-m MESSAGE] {start,end}
+commcare-cloud <env> downtime [-m MESSAGE] [-d DURATION] {start,end}
 ```
 
 This notifies Datadog of the planned downtime so that is is recorded
@@ -1007,6 +1033,13 @@ in the history, and so that during it service alerts are silenced.
 ###### `-m MESSAGE, --message MESSAGE`
 
 Optional message to set on Datadog.
+
+###### `-d DURATION, --duration DURATION`
+
+Max duration in hours for the Datadog downtime after which it will be auto-cancelled.
+This is a safeguard against downtime remaining active and preventing future
+alerts.
+Default: 24 hours
 
 ---
 

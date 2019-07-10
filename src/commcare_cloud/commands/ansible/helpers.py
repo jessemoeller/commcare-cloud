@@ -6,18 +6,10 @@ from contextlib import contextmanager
 from clint.textui import puts, colored
 
 from commcare_cloud.cli_utils import has_arg, ask
-from commcare_cloud.environment.main import get_environment
 from commcare_cloud.environment.paths import ANSIBLE_DIR, ANSIBLE_ROLES_PATH
 from six.moves import shlex_quote
 
-DEPRECATED_ANSIBLE_ARGS = [
-    '--sudo',
-    '--sudo-user',
-    '--su',
-    '--su-user',
-    '--ask-sudo-pass',
-    '--ask-su-pass',
-]
+DEPRECATED_ANSIBLE_ARGS = []
 
 
 class AnsibleContext(object):

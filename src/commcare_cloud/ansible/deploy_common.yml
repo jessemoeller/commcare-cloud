@@ -17,18 +17,19 @@
   tags: common
 
 - name: ufw (firewall)
-  hosts: 'all_commcarehq:!proxy:!cas_proxy:!pna_proxy:!couchdb2_proxy'
+  hosts: 'all_commcarehq:!proxy:!cas_proxy:!pna_proxy:!couchdb2_proxy:!reach_proxy'
   become: true
   roles:
     - {role: ufw, tags: ufw, when: ufw_private_interface is defined}
   tags: common
 
 - name: ufw (proxy firewall)
-  hosts: 'proxy:cas_proxy:pna_proxy:couchdb2_proxy'
+  hosts: 'proxy:cas_proxy:pna_proxy:couchdb2_proxy:reach_proxy'
   become: true
   tasks:
-    - import_tasks: roles/ufw/tasks/proxy_ufw.yml tags=ufw-proxy
+    - import_tasks: roles/ufw/tasks/proxy_ufw.yml
       when: ufw_private_interface is defined or is_monolith|bool
+      tags: ufw-proxy
   tags: common
 
 - name: ufw off (firewall)
@@ -44,7 +45,7 @@
   hosts: all_commcarehq
   become: true
   roles:
-    - {role: datadog, tags: datadog, when: DATADOG_ENABLED}
+    - {role: datadog, tags: datadog, when: DATADOG_ENABLED|bool}
   tags: common
 
 - name: Configure monit
@@ -98,6 +99,7 @@
     lineinfile:
       dest: /etc/resolvconf/resolv.conf.d/base
       line: 'nameserver {{ item }}'
+      create: yes
     with_items: "{{ nameservers }}"
     when: nameservers is defined
     tags:

@@ -13,8 +13,8 @@
       include_role:
         name: nginx
         tasks_from: certs
-      when: not nginx_installed|default(False)
-      tags: nginx
+      tags:
+        - nginx
 
 - name: Proxy
   hosts: proxy
@@ -115,34 +115,40 @@
         site_config: {name: riakcs, vars_file: riakcs}
 
 - name: Reach Proxy
-  hosts: proxy
+  hosts: reach_proxy
   tasks:
     - include_role:
-        name: nginx
+        name: {name: nginx, tags: nginx_sites}
         tasks_from: set_site_present
       vars:
         site_present: "{{ 'reach_ssl' in special_sites }}"
         site_config: {name: reach_ssl, vars_file: reach_ssl}
+      tags:
+        - nginx_sites
 
 - name: CAS Proxy
   hosts: cas_proxy
   tasks:
     - include_role:
-        name: nginx
+        name: {name: nginx, tags: nginx_sites}
         tasks_from: set_site_present
       vars:
         site_present: "{{ 'cas_ssl' in special_sites }}"
         site_config: {name: cas_ssl, vars_file: cas_ssl}
+      tags:
+        - nginx_sites
 
 - name: PNA Proxy
   hosts: pna_proxy
   tasks:
     - include_role:
-        name: nginx
+        name: {name: nginx, tags: nginx_sites}
         tasks_from: set_site_present
       vars:
         site_present: "{{ 'pna_ssl' in special_sites }}"
         site_config: {name: pna_ssl, vars_file: pna_ssl}
+      tags:
+        - nginx_sites
 
 - name: Move logrotate to hourly
   hosts:
@@ -176,3 +182,4 @@
 - name: Setup Letsencrypt
   import_playbook: letsencrypt_cert.yml
   tags: setup_letsencrypt
+  when: not fake_ssl_cert

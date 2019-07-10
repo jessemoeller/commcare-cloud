@@ -1,15 +1,20 @@
+from collections import defaultdict
+
 import jsonobject
 import re
 
 import six
 
 from commcare_cloud.environment.constants import constants
+from commcare_cloud.environment.exceptions import PGConfigException
 from commcare_cloud.environment.schemas.role_defaults import get_defaults_jsonobject
 
 PostgresqlOverride = get_defaults_jsonobject(
-    'postgresql',
+    'postgresql_base',
     allow_dump_from_pgstandby=jsonobject.BooleanProperty,
 )
+
+PgbouncerOverride = get_defaults_jsonobject('pgbouncer')
 
 
 def alphanum_key(key):
@@ -68,18 +73,21 @@ class PostgresqlConfig(jsonobject.JsonObject):
     SEPARATE_SYNCLOGS_DB = jsonobject.BooleanProperty(default=True)
     SEPARATE_FORM_PROCESSING_DBS = jsonobject.BooleanProperty(default=True)
     DEFAULT_POSTGRESQL_HOST = jsonobject.StringProperty(default=None)
+    DEFAULT_CONN_MAX_AGE = jsonobject.IntegerProperty(default=None)
     REPORTING_DATABASES = jsonobject.DictProperty(default=lambda: {"ucr": "ucr"})
     LOAD_BALANCED_APPS = jsonobject.DictProperty(default={})
     host_settings = jsonobject.DictProperty(lambda: HostSettings)
     dbs = jsonobject.ObjectProperty(lambda: SmartDBConfig)
     pgpool_config = jsonobject.DictProperty(lambda: PgpoolHostSettings)
 
-    override = jsonobject.ObjectProperty(PostgresqlOverride)
+    postgres_override = jsonobject.ObjectProperty(PostgresqlOverride)
+    pgbouncer_override = jsonobject.ObjectProperty(PgbouncerOverride)
 
     @classmethod
     def wrap(cls, data):
         # for better validation error message
-        PostgresqlOverride.wrap(data.get('override', {}))
+        PostgresqlOverride.wrap(data.get('postgres_override', {}))
+        PgbouncerOverride.wrap(data.get('pgbouncer_override', {}))
         self = super(PostgresqlConfig, cls).wrap(data)
         for db in self.generate_postgresql_dbs():
             if not db.user:
@@ -88,20 +96,52 @@ class PostgresqlConfig(jsonobject.JsonObject):
                 db.password = DEFAULT_POSTGRESQL_PASSWORD
         return self
 
-    def to_generated_variables(self):
+    def to_generated_variables(self, environment):
         data = self.to_json()
-        del data['override']
+        del data['postgres_override']
+        del data['pgbouncer_override']
         data['postgresql_dbs'] = data.pop('dbs')
-        data['postgresql_dbs']['all'] = sorted(
+
+        sorted_dbs = sorted(
             (db.to_json() for db in self.generate_postgresql_dbs()),
             key=lambda db: db['name']
         )
         data.update(self.override.to_json())
+
         data['pgpool_config'] = {
             pgpool_host: settings.to_json()
             for pgpool_host, settings in self.pgpool_config.items()
         }
+
+        data['postgresql_dbs']['all'] = sorted_dbs
+        data.update(self.postgres_override.to_json())
+        data.update(self.pgbouncer_override.to_json())
+
+        # generate list of databases per host for use in pgbouncer and postgresql configuration
+        postgresql_hosts = environment.groups.get('postgresql', [])
+        if self.DEFAULT_POSTGRESQL_HOST not in postgresql_hosts:
+            postgresql_hosts.append(self.DEFAULT_POSTGRESQL_HOST)
+
+        dbs_by_host = defaultdict(list)
+        for db in sorted_dbs:
+            if db['pgbouncer_host'] in postgresql_hosts:
+                dbs_by_host[db['pgbouncer_host']].append(db)
+
+        for host in environment.groups.get('pg_standby', []):
+            root_pg_host = self._get_root_pg_host(host, environment)
+            dbs_by_host[host] = dbs_by_host[root_pg_host]
+
+        data['postgresql_dbs']['by_host'] = dict(dbs_by_host)
         return data
+
+    def _get_root_pg_host(self, standby_host, env):
+        vars = env.get_host_vars(standby_host)
+        standby_master = vars.get('hot_standby_master')
+        if not standby_master:
+            raise PGConfigException('{} has not root pg host'.format(standby_host))
+        if standby_master in env.groups['postgresql']:
+            return standby_master
+        return self._get_root_pg_host(standby_master, env)
 
     def replace_hosts(self, environment):
         if self.DEFAULT_POSTGRESQL_HOST is None:
@@ -133,6 +173,15 @@ class PostgresqlConfig(jsonobject.JsonObject):
                     db.port = host_settings[db.host].port
                 else:
                     db.port = DEFAULT_PORT
+                if db.conn_max_age is None:
+                    db.conn_max_age = self.DEFAULT_CONN_MAX_AGE
+
+            for entry in self.postgres_override.postgresql_hba_entries:
+                netmask = entry.get('netmask')
+                if netmask and not re.match(r'(\d+\.?){4}', netmask):
+                    host, mask = netmask.split('/')
+                    host = environment.translate_host(host, environment.paths.postgresql_yml)
+                    entry['netmask'] = '{}/{}'.format(host, mask)
 
         self._replace_pgpool_hosts(environment)
 
@@ -214,6 +263,13 @@ class SmartDBConfig(jsonobject.JsonObject):
     standby = jsonobject.ListProperty(lambda: StandbyDBOptions)
 
 
+class PGConfigItem(jsonobject.JsonObject):
+    _allow_dynamic_properties = False
+
+    name = jsonobject.StringProperty()
+    value = jsonobject.DefaultProperty()
+
+
 class DBOptions(jsonobject.JsonObject):
     _allow_dynamic_properties = False
 
@@ -225,10 +281,14 @@ class DBOptions(jsonobject.JsonObject):
     user = jsonobject.StringProperty()
     password = jsonobject.StringProperty()
     options = jsonobject.DictProperty(unicode)
+    conn_max_age = jsonobject.IntegerProperty(default=None)
     django_alias = jsonobject.StringProperty()
     django_migrate = jsonobject.BooleanProperty(default=True)
     query_stats = jsonobject.BooleanProperty(default=False)
     create = jsonobject.BooleanProperty(default=True)
+
+    # config values to be set at the database level
+    pg_config = jsonobject.ListProperty(lambda: PGConfigItem)
 
 
 class MainDBOptions(DBOptions):

@@ -44,6 +44,9 @@ DATABASES = { {% for config in postgresql_dbs.all %}
         'HOST': '{{ db_host }}',
         'PORT': {% if config.pgpool_host %}{{ pgpool_port }}{% else %}{{ config.port }}{% endif %},
         'OPTIONS': {{ config.options|to_json }},
+        {% if config.conn_max_age -%}
+        'CONN_MAX_AGE': {{ config.conn_max_age }},
+        {% endif -%}
         'DISABLE_SERVER_SIDE_CURSORS': True,
         {% if not config.django_migrate -%}
         'MIGRATE': False,
@@ -166,6 +169,9 @@ COUCH_CACHE_DOCS = '{{ localsettings.COUCH_CACHE_DOCS }}'
 {% if 'COUCH_CACHE_VIEWS' in localsettings %}
 COUCH_CACHE_VIEWS = '{{ localsettings.COUCH_CACHE_VIEWS }}'
 {% endif %}
+{% if 'COUCH_REINDEX_SCHEDULE' in localsettings %}
+COUCH_REINDEX_SCHEDULE = {{ localsettings.COUCH_REINDEX_SCHEDULE }}
+{% endif %}
 
 {% if 'STAGING_DOMAINS' in localsettings %}
 STAGING_DOMAINS = {{ localsettings.STAGING_DOMAINS }}
@@ -197,9 +203,9 @@ S3_BLOB_DB_SETTINGS = {
     'secret_key': '{{ s3_blob_db_secret_key }}',
     's3_bucket': '{{ s3_blob_db_s3_bucket }}',
     'bulk_delete_chunksize': {{ s3_bulk_delete_chunksize }},
-    'config': {'signature_version': 's3'},
+    'config': {'signature_version': '{{ s3_signature_version|default("s3") }}'},
 }
-{% if 'BLOB_DB_MIGRATING_FROM_S3_TO_S3' in localsettings %}
+{% if localsettings.get('BLOB_DB_MIGRATING_FROM_S3_TO_S3', False) %}
 OLD_S3_BLOB_DB_SETTINGS = {
     'url': '{{ old_s3_blob_db_url }}',
     'access_key': '{{ old_s3_blob_db_access_key }}',
@@ -356,7 +362,6 @@ CUSTOM_REPORT_MAP = {
     ]
 }
 
-CELERY_RESULT_BACKEND = '{{ CELERY_RESULT_BACKEND }}'
 CELERY_FLOWER_URL = '{{ CELERY_FLOWER_URL }}'
 {% if 'CELERY_TIMEZONE' in localsettings and localsettings.CELERY_TIMEZONE %}
 CELERY_TIMEZONE = '{{ localsettings.CELERY_TIMEZONE }}'
@@ -367,6 +372,11 @@ GMAPS_API_KEY = '{{ GMAPS_API_KEY }}'
 FORMTRANSLATE_TIMEOUT = 5
 
 CELERY_BROKER_URL = BROKER_URL = '{{ BROKER_URL }}'
+CELERY_HEARTBEAT_THRESHOLDS = {
+{% for queue, threshold in CELERY_HEARTBEAT_THRESHOLDS.items() | sort %}
+    {{ queue | to_json }}: {% if threshold == None %}None{% else %}{{ threshold | to_json }}{% endif %},
+{% endfor %}
+}
 
 FORMPLAYER_URL = "/formplayer"
 
@@ -389,6 +399,7 @@ redis_cache = {
 {% endif %}
     'OPTIONS': {
         'PARSER_CLASS': 'redis.connection.HiredisParser',
+        'PICKLE_VERSION': 2,  # After PY3 migration: remove
 {% if is_redis_cluster %}
         'REDIS_CLIENT_CLASS': 'rediscluster.RedisCluster',
         'CONNECTION_POOL_CLASS': 'rediscluster.connection.ClusterConnectionPool',
@@ -410,6 +421,9 @@ ELASTICSEARCH_HOSTS = [
     {% endfor -%}
 ]
 ELASTICSEARCH_PORT = {{ ELASTICSEARCH_PORT }}
+
+ES_SETTINGS = {{ ES_SETTINGS }}
+
 SECRET_KEY = "{{ SECRET_KEY }}"
 
 PRIME_VIEWS_INTERVAL = 2
@@ -573,13 +587,13 @@ MAPS_LAYERS = json.loads('{{ MAPS_LAYERS|to_json }}')
 PILLOWTOP_MACHINE_ID = '{{ localsettings.PILLOWTOP_MACHINE_ID }}'
 {% endif %}
 
-ACTIVE_PILLOW_NAMES = [
+ACTIVE_PILLOW_NAMES = list(set([
 {% for _, pillows in app_processes_config.pillows.items() %}
-    {% for pillow_name, params in pillows.items() %}
+    {% for pillow_name in pillows.keys()|unique %}
         "{{ pillow_name }}",
     {% endfor %}
 {% endfor %}
-]
+]))
 
 {% if SIMPLE_API_KEYS %}
 SIMPLE_API_KEYS = {{ SIMPLE_API_KEYS|to_json }}
@@ -653,10 +667,6 @@ SMS_PREFIXES_BY_COUNTRY = '{{ localsettings.SMS_PREFIXES_BY_COUNTRY }}'
 INACTIVITY_TIMEOUT = {{ localsettings.INACTIVITY_TIMEOUT }}
 {% endif %}
 
-{% if MIA_THE_DEPLOY_BOT_API %}
-MIA_THE_DEPLOY_BOT_API = '{{ MIA_THE_DEPLOY_BOT_API }}'
-{% endif %}
-
 # Set to something like "192.168.1.5:8000" (with your IP address).
 # See corehq/apps/builds/README.md for more information.
 BASE_ADDRESS = '{{ SITE_HOST }}'
@@ -683,12 +693,6 @@ SUPERVISOR_RPC_ENABLED = True
 SUPERVISOR_USERNAME = '{{ supervisor_http_username }}'
 SUPERVISOR_PASSWORD = '{{ supervisor_http_password }}'
 {% endif %}
-
-ENVIRONMENT_HOSTS = {
-{% for group, hosts in groups.items() | sort %}
-    {{ group | to_json }}: {{ hosts | sort | to_json }},
-{% endfor %}
-}
 
 {% if HQ_PRIVATE_KEY %}
 HQ_PRIVATE_KEY = \
@@ -869,7 +873,11 @@ TRANSIFEX_DETAILS = {
 {% if localsettings.UCR_COMPARISONS is defined %}
 UCR_COMPARISONS = {
 {% for old_config, new_config in localsettings.UCR_COMPARISONS.items() %}
-    '{{ old_config }}': '{{ new_config }}',
+    {% if new_config %}
+     '{{ old_config }}': '{{ new_config }}',
+    {% else %}
+    '{{ old_config }}': None,
+    {% endif %}
 {% endfor %}
 }
 {% endif %}

@@ -10,18 +10,19 @@ dev_users:
     - frener
     - gbova
     - jemord
-    - jroth
     - jschweers
     - mkangia
     - nhooper
     - npellegrino
-    - nsharma
-    - pvaidyanathan
     - rnegi
     - sgoyal
     - skelly
     - sravfeyn
+    - rkumar
   absent:
     - astone
     - wpride
     - gcapalbo
+    - jroth
+    - pvaidyanathan
+    - nsharma

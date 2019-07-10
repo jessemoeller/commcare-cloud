@@ -1,0 +1,75 @@
+---
+- import_playbook: host_group_aliases.yml
+
+- name: PostgreSQL Machine Setup
+  hosts:
+    - postgresql
+    - pg_standby
+  become: true
+  roles:
+    - {role: ecryptfs, tags: 'ecryptfs'}
+    - {role: backups, tags: 'backups'}
+
+- name: PostgreSQL
+  hosts: postgresql:pg_standby
+  become: true
+  roles:
+    - {role: postgresql, tags: 'postgresql'}
+
+- name: pgbouncer
+  hosts: postgresql:pg_standby
+  become: true
+  roles:
+    - {role: pgbouncer, tags: 'pgbouncer'}
+
+# Notes this should be filtered out if the environment does not have remote postgres
+- name: Remote PostgreSQL (e.g. Amazon RDS)
+  hosts: django_manage
+  tasks:
+    - name: Install python-psycopg2 to be able to set up remote postgresql
+      become: yes
+      block:
+        - apt: name=libpq-dev state=latest
+        - pip: name=psycopg2
+    - name: Remote PostgreSQL
+      include_role:
+        name: postgresql_base
+        tasks_from: set_up_dbs.yml
+      with_items: "{{ groups.remote_postgresql | default([]) }}"
+      loop_control:
+        loop_var: 'postgresql_host'
+      vars:
+        db_is_remote: yes
+        is_pg_standby: no
+  tags:
+    - remote_postgresql
+
+- name: PostgreSQL Backup
+  hosts: postgresql:pg_backup
+  become: true
+  roles:
+    - {role: pg_backup, tags: ['postgresql', 'backups', 'pg_backup']}
+
+- name: Setup auth for standby
+  hosts:
+    - postgresql
+  vars:
+    - userFrom: postgres
+    - hostTo: "{{ hot_standby_server }}"
+    - userTo: postgres
+    - state: 'present'
+  tasks:
+    - import_tasks: roles/setup_auth_keys.yml
+      when: hot_standby_server is defined and hot_standby_server
+  tags:
+    - pg_standby
+
+# Disables transparent huge pages (THP)
+- name: Disable THP
+  become: true
+  hosts:
+    - postgresql
+    - pg_standby
+  tags: 'kernel_tuning'
+  roles:
+    - role: thp

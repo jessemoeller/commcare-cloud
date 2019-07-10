@@ -79,6 +79,7 @@ resource "aws_vpn_connection_route" "vpn_connections" {
 }
 
 resource "aws_security_group" "vpn_connections" {
+  count = "${length(var.vpn_connections) == 0 ? 0 : 1}"
   name = "vpn-connections-sg-${var.env}"
   vpc_id = "${aws_vpc.main.id}"
   ingress {
@@ -97,10 +98,17 @@ resource "aws_security_group" "vpn_connections" {
 resource "aws_route_table" "private" {
   vpc_id = "${aws_vpc.main.id}"
 
-  route = [{
-    cidr_block = "0.0.0.0/0"
-    nat_gateway_id = "${aws_nat_gateway.main.id}"
-  }, "${var.external_routes}"]
+  route = ["${
+    concat(
+      list(
+        map(
+          "cidr_block", "0.0.0.0/0",
+          "nat_gateway_id", aws_nat_gateway.main.id
+        )
+      ),
+      var.external_routes
+    )
+  }"]
 
   tags {
     Name = "private-${var.env}"
@@ -110,10 +118,17 @@ resource "aws_route_table" "private" {
 resource "aws_route_table" "public" {
   vpc_id = "${aws_vpc.main.id}"
 
-  route = [{
-    cidr_block = "0.0.0.0/0"
-    gateway_id = "${aws_internet_gateway.main.id}"
-  }, "${var.external_routes}"]
+  route = ["${
+    concat(
+      list(
+        map(
+          "cidr_block", "0.0.0.0/0",
+          "gateway_id", aws_internet_gateway.main.id
+        )
+      ),
+      var.external_routes
+    )
+  }"]
 
   tags {
     Name = "public-${var.env}"
@@ -146,6 +161,8 @@ resource "aws_eip" "nat_gateway" {
   vpc = true
   tags {
     Name = "nat-gateway-ip-${var.env}"
+    Environment = "production"
+    Group = "Network"
   }
 }
 
@@ -154,11 +171,21 @@ resource "aws_nat_gateway" "main" {
   allocation_id = "${aws_eip.nat_gateway.id}"
   subnet_id     = "${aws_subnet.subnet-public.*.id[0]}"
   depends_on    = ["aws_internet_gateway.main", "aws_eip.nat_gateway"]
+  tags {
+    Name = "nat-gateway-${var.env}"
+    Environment = "production"
+    Group = "Network"
+  }
 }
 
 # Create an Internet Gateway
 resource "aws_internet_gateway" "main" {
   vpc_id = "${aws_vpc.main.id}"
+  tags {
+    Name = "internet-gateway-${var.env}"
+    Environment = "production"
+    Group = "Network"
+  }
 }
 
 locals {
@@ -272,6 +299,16 @@ resource "aws_security_group" "db-private" {
     protocol    = "tcp"
     cidr_blocks = [
       // Allow proxy access to redis
+      "${aws_subnet.subnet-public.*.cidr_block}",
+    ]
+  }
+
+  ingress {
+    from_port   = 6432
+    to_port     = 6432
+    protocol    = "tcp"
+    cidr_blocks = [
+      // Allow proxy access to pgbouncer
       "${aws_subnet.subnet-public.*.cidr_block}",
     ]
   }
