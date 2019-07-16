@@ -12,6 +12,15 @@ nginx_sites:
       hosts: formplayer
       port: "{{ formplayer_port }}"
       method: "hash $cookie_sessionid consistent"
+   mappings:
+    - name: "$fresh_sync"
+      variable: "$http_x_commcarehq_lastsynctoken"
+      value: "$server_name"
+   limit_req_zones:
+    - name: "restore"
+      zone: "$fresh_sync"
+      size: "10m"
+      rate: "1r/s"
    proxy_cache_path:
     - name: "hq_media_cache"
       path: "{{ www_home }}/hq_media/cache"
@@ -45,6 +54,10 @@ nginx_sites:
       proxy_buffers: 8 64k
       proxy_buffer_size: 64k
       client_body_buffer_size: 512k
+      limit_reqs:
+        - zone_name: "restore"
+          burst: 0
+          nodelay: True
     - name: "/static"
       alias: "{{ nginx_static_home }}"
       add_header: "Access-Control-Allow-Origin *"
