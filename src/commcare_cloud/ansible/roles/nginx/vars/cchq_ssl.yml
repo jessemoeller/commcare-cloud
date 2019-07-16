@@ -13,17 +13,23 @@ nginx_sites:
       port: "{{ formplayer_port }}"
       method: "hash $cookie_sessionid consistent"
    mappings:
-    - name: "$fresh_sync"
+    - name: "$sync_update"
       variable: "$http_x_commcarehq_lastsynctoken"
+      # If header is provided, rate limit on $server_name
       default_value: "$server_name"
       var_mappings:
+        # If the header is not provided, do not rate limit
         - key: '""'
           value: '""'
    limit_req_zones:
-    - name: "restore"
-      zone: "$fresh_sync"
+    - name: "restore" # Limits restores that are not new device or 412s
+      zone: "$sync_update"
       size: "10m"
       rate: "1r/s"
+    - name: "overall_restore" # Limits all restores
+      zone: "$server_name"
+      size: "10m"
+      rate: "15r/s"
    proxy_cache_path:
     - name: "hq_media_cache"
       path: "{{ www_home }}/hq_media/cache"
@@ -57,10 +63,13 @@ nginx_sites:
       proxy_buffers: 8 64k
       proxy_buffer_size: 64k
       client_body_buffer_size: 512k
-      limit_reqs:
-        - zone_name: "restore"
-          burst: 0
-          nodelay: True
+       limit_reqs:
+         - zone_name: "restore"
+           burst: 50
+           nodelay: True
+         - zone_name: "overall_restore"
+           burst: 50
+           nodelay: True
     - name: "/static"
       alias: "{{ nginx_static_home }}"
       add_header: "Access-Control-Allow-Origin *"
