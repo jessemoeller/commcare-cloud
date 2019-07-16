@@ -18,7 +18,7 @@ nginx_sites:
       default_value: "$server_name"
       var_mappings:
         - key: '""'
-          value: "$server_name"
+          value: '""'
    limit_req_zones:
     - name: "restore"
       zone: "$fresh_sync"
