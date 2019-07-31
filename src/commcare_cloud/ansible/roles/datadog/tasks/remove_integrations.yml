@@ -1,6 +1,6 @@
 - name: remove cloudant check
   file:
-    path: /etc/dd-agent/checks.d/cloudant.py
+    path: /etc/datadog-agent/checks.d/cloudant.py
     state: absent
   notify: restart datadog
   when: not (datadog_integration_cloudant and inventory_hostname == groups.django_manage[0]) or not DATADOG_INTEGRATIONS_ENABLED|default(DATADOG_ENABLED)
@@ -9,7 +9,7 @@
 
 - name: remove couchdb2 check
   file:
-    path: /etc/dd-agent/checks.d/couchdb2.py
+    path: /etc/datadog-agent/checks.d/couchdb2.py
     state: absent
   notify: restart datadog
   when: True
@@ -18,7 +18,7 @@
 
 - name: remove celery check
   file:
-    path: /etc/dd-agent/checks.d/celery.py
+    path: /etc/datadog-agent/checks.d/celery.py
     state: absent
   notify: restart datadog
   when: inventory_hostname != groups.celery[0] or not DATADOG_INTEGRATIONS_ENABLED|default(DATADOG_ENABLED)
@@ -27,7 +27,7 @@
 
 - name: remove shell check
   file:
-    path: /etc/dd-agent/checks.d/shell.py
+    path: /etc/datadog-agent/checks.d/shell.py
     state: absent
   notify: restart datadog
   when: not datadog_integration_vmware or not DATADOG_INTEGRATIONS_ENABLED|default(DATADOG_ENABLED)
@@ -36,7 +36,7 @@
 
 - name: Remove pgbouncer_custom check
   file:
-    path: /etc/dd-agent/checks.d/pgbouncer_custom.py
+    path: /etc/datadog-agent/checks.d/pgbouncer_custom.py
     state: absent
   when: not datadog_integration_pgbouncer_custom or not DATADOG_INTEGRATIONS_ENABLED|default(DATADOG_ENABLED)
   notify: restart datadog
@@ -45,7 +45,7 @@
 
 - name: remove datadog integration configs
   file:
-    path: "/etc/dd-agent/conf.d/{{ item.name }}.yaml"
+    path: "/etc/datadog-agent/conf.d/{{ item.name }}.d/{{ item.name }}.yaml"
     state: absent
   notify: restart datadog
   tags:

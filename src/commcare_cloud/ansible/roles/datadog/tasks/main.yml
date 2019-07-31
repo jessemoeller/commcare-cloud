@@ -4,7 +4,7 @@
     - datadog
 
 - name: Add datadog apt repo
-  apt_repository: repo='deb http://apt.datadoghq.com/ stable main' state=present update_cache=yes
+  apt_repository: repo='deb http://apt.datadoghq.com/ stable main 6' state=present update_cache=yes
   tags:
     - datadog
 
@@ -13,8 +13,15 @@
   tags:
     - datadog
 
-- name: copy datadog conf
-  template: src=datadog.conf.j2 dest=/etc/dd-agent/datadog.conf
+- name: Remove v5 config
+  file:
+    state: absent
+    path: /etc/dd-agent
+  tags:
+    - datadog
+
+- name: copy datadog conf v6
+  template: src=datadog.yaml.j2 dest=/etc/datadog-agent/datadog.yaml
   notify: restart datadog
   tags:
     - datadog
