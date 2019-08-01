@@ -8,6 +8,7 @@ instances:
        port: 5432
        username: {{ postgres_users.commcare.username }}
        password: {{ postgres_users.commcare.password }}
+       # dbname: dbname
        ssl: False
        tags:
          - environment:{{ env_monitoring_id }}
@@ -19,3 +20,11 @@ instances:
            descriptors:  # map columns to tags
              - [datname, database]
              - [state, state]
+       custom_queries: # custom_metrics is now deprecated, using custom_queries instead
+         - metric_prefix: postgresql
+           query: SELECT current_database() datname, sum(seq_scan) large_seq_scans FROM pg_stat_all_tables WHERE n_live_tup > 1000 and schemaname != 'pg-catalog';
+           columns: # description of columns in order
+             - name: database
+               type: tag
+             - name: large_seq_scans
+               type: gauge
